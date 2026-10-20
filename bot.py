@@ -9,13 +9,14 @@ import threading
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8997370724:AAE2xIrI1Sde0AQLkcANXXUJJYHvZalF648"
+BOT_TOKEN = "8651386320:AAFJ9E5McUYMV_fk0RaNlDYY5EIceQJhsyk"
 ADMIN_ID = 6484025560
 MY_USERNAME = "@Gangster1246"
 
-STAR = '<tg-emoji emoji-id="5875465628285931233">⭐</tg-emoji>'
-GIFT_EMOJI = '<tg-emoji emoji-id="5875465628285931233">🎁</tg-emoji>'
-CLOCK_EMOJI = '<tg-emoji emoji-id="5875465628285931233">⏱</tg-emoji>'
+# БЕЛЫЕ ПРЕМИУМ-ЭМОДЗИ
+STAR = '<tg-emoji emoji-id="5280802202083346495">⭐</tg-emoji>'
+GIFT_EMOJI = '<tg-emoji emoji-id="5280784083407933462">🎁</tg-emoji>'
+CLOCK_EMOJI = '<tg-emoji emoji-id="5280985696880987202">⏱</tg-emoji>'
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -123,14 +124,11 @@ def inline_offer(query):
 @bot.callback_query_handler(func=lambda call: call.data in ["accept_offer", "decline_offer"])
 def on_callback(call):
     if call.data == "accept_offer":
-        # В инлайн-режиме мы не можем изменить само сообщение, 
-        # поэтому просто показываем всплывающее уведомление (alert)
         bot.answer_callback_query(
             call.id, 
             text="Подарок успешно продан! Передайте его покупателю.", 
             show_alert=True
         )
-
     else:
         bot.answer_callback_query(
             call.id, 
