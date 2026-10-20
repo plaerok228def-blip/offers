@@ -9,7 +9,7 @@ import threading
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8651386320:AAFJ9E5McUYMV_fk0RaNlDYY5EIceQJhsyk"
+BOT_TOKEN = "8651386320:AAHE5HEETk21XNATf5tCEpArp8_e9uN0Zqo"
 ADMIN_ID = 6484025560
 MY_USERNAME = "@Gangster1246"
 
