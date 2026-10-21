@@ -10,8 +10,8 @@ import os
 
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = "8337096654:AAFq_4d39Jo2x0sxC8L2lStxTbL_a3q1P4I"
-ADMIN_ID = 8927166966       # Твой ID
-MY_USERNAME = "@masons_19"  # Твой юзернейм
+ADMIN_ID = 8927166966
+MY_USERNAME = "@masons_19"
 
 # БЕЛЫЕ ПРЕМИУМ-ЭМОДЗИ
 STAR = '<tg-emoji emoji-id="5280802202083346495">⭐</tg-emoji>'
@@ -65,9 +65,9 @@ def offer_keyboard():
 def start(message):
     if message.from_user.id != ADMIN_ID:
         return
-    bot.send_message(message.chat.id, "Бот запущен.\n\n1. Инлайн: `@твой_бот ссылка цена @юзер`\n2. Команда: `/offer ссылка цена @юзер` (для премиум-эмодзи)", parse_mode="Markdown")
+    bot.send_message(message.chat.id, "Бот запущен.\n\n1. Инлайн: `@твой_бот ссылка цена @юзер`\n2. Команда: `/offer ссылка цена @юзер`", parse_mode="Markdown")
 
-# --- КОМАНДА ДЛЯ БИЗНЕС-РЕЖИМА (Работает с премиум-эмодзи) ---
+# --- КОМАНДА /offer (Личка / Группы) ---
 @bot.message_handler(commands=['offer'])
 def cmd_offer(message):
     if message.from_user.id != ADMIN_ID:
@@ -88,7 +88,6 @@ def cmd_offer(message):
 
     gift_name = parse_gift_name(gift_link)
     expires_at = datetime.now() + timedelta(hours=6)
-    
     offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
     kb = offer_keyboard()
 
@@ -100,13 +99,60 @@ def cmd_offer(message):
         disable_web_page_preview=False
     )
     
-    # Удаляем команду /offer из чата
     try:
         bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
     except:
         pass
 
-# --- ИНЛАЙН РЕЖИМ (Для обычных чатов) ---
+# --- БИЗНЕС РЕЖИМ (Работает от твоего имени) ---
+@bot.business_message_handler(commands=['offer'])
+def cmd_offer_business(message):
+    # В бизнес-режиме сообщение приходит с business_connection_id
+    conn_id = message.business_connection_id
+    
+    # Проверка, что команду написал ты (чтобы мамонт не мог сам себе отправить)
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    parts = message.text.split()
+    if len(parts) < 4:
+        bot.send_message(
+            chat_id=message.chat.id, 
+            text="❌ Формат: /offer ссылка цена @юзер", 
+            business_connection_id=conn_id
+        )
+        return
+
+    gift_link = parts[1]
+    try:
+        price = int(parts[2])
+    except ValueError:
+        bot.send_message(message.chat.id, "❌ Цена должна быть числом", business_connection_id=conn_id)
+        return
+    target = parts[3]
+
+    gift_name = parse_gift_name(gift_link)
+    expires_at = datetime.now() + timedelta(hours=6)
+    offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
+    kb = offer_keyboard()
+
+    # Отправляем сообщение ОТ ТВОЕГО ИМЕНИ в бизнес-чат
+    bot.send_message(
+        chat_id=message.chat.id,
+        text=offer_text,
+        parse_mode="HTML",
+        reply_markup=kb,
+        disable_web_page_preview=False,
+        business_connection_id=conn_id # <--- ГЛАВНЫЙ ПАРАМЕТР
+    )
+    
+    # Удаляем команду /offer из бизнес-чата
+    try:
+        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except:
+        pass
+
+# --- ИНЛАЙН РЕЖИМ ---
 @bot.inline_handler(lambda query: len(query.query.strip()) > 0)
 def inline_offer(query):
     text = query.query.strip()
@@ -143,7 +189,6 @@ def inline_offer(query):
     target = parts[2] if len(parts) > 2 else "Получатель"
     gift_name = parse_gift_name(gift_link)
     expires_at = datetime.now() + timedelta(hours=6)
-    
     offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
     kb = offer_keyboard()
 
@@ -164,25 +209,28 @@ def inline_offer(query):
 # --- ОБРАБОТКА КНОПОК ---
 @bot.callback_query_handler(func=lambda call: call.data in ["accept_offer", "decline_offer"])
 def on_callback(call):
+    # Определяем, в каком режиме работает кнопка (обычный или бизнес)
+    conn_id = getattr(call.message, 'business_connection_id', None)
+
     if call.data == "accept_offer":
         bot.answer_callback_query(call.id, "Оффер принят")
         
-        # Пытаемся изменить сообщение (сработает только если отправляли через команду /offer)
-        if call.message.reply_to_message is None: 
-            try:
-                kb = types.InlineKeyboardMarkup()
-                kb.add(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
-                success_text = f"{GIFT_EMOJI} <b>Подарок успешно продан!</b>\n\n• Передайте подарок покупателю для зачисления Stars."
-                bot.edit_message_text(
-                    chat_id=call.message.chat.id,
-                    message_id=call.message.message_id,
-                    text=success_text,
-                    parse_mode="HTML",
-                    reply_markup=kb,
-                    disable_web_page_preview=False
-                )
-            except Exception:
-                pass
+        kb = types.InlineKeyboardMarkup()
+        kb.add(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
+        success_text = f"{GIFT_EMOJI} <b>Подарок успешно продан!</b>\n\n• Передайте подарок покупателю для зачисления Stars."
+        
+        try:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=success_text,
+                parse_mode="HTML",
+                reply_markup=kb,
+                disable_web_page_preview=False,
+                business_connection_id=conn_id # Важно для бизнес-режима
+            )
+        except Exception as e:
+            print(f"Ошибка при редактировании: {e}")
     else:
         bot.answer_callback_query(call.id, "Оффер отклонён")
 
