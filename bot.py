@@ -60,97 +60,58 @@ def offer_keyboard():
     )
     return kb
 
-# --- ОБЫЧНЫЕ КОМАНДЫ ---
-@bot.message_handler(commands=['start'])
-def start(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    bot.send_message(message.chat.id, "Бот запущен.\n\n1. Инлайн: `@твой_бот ссылка цена @юзер`\n2. Команда: `/offer ссылка цена @юзер`", parse_mode="Markdown")
-
-# --- КОМАНДА /offer (Личка / Группы) ---
-@bot.message_handler(commands=['offer'])
-def cmd_offer(message):
+# --- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ---
+@bot.message_handler(func=lambda message: True, content_types=['text'])
+def handle_all_messages(message):
+    # Проверяем, что пишет админ (чтобы мамонт не мог использовать бота)
     if message.from_user.id != ADMIN_ID:
         return
 
-    parts = message.text.split()
-    if len(parts) < 4:
-        bot.reply_to(message, "❌ Формат: /offer ссылка цена @юзер")
-        return
-
-    gift_link = parts[1]
-    try:
-        price = int(parts[2])
-    except ValueError:
-        bot.reply_to(message, "❌ Цена должна быть числом")
-        return
-    target = parts[3]
-
-    gift_name = parse_gift_name(gift_link)
-    expires_at = datetime.now() + timedelta(hours=6)
-    offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
-    kb = offer_keyboard()
-
-    bot.send_message(
-        chat_id=message.chat.id,
-        text=offer_text,
-        parse_mode="HTML",
-        reply_markup=kb,
-        disable_web_page_preview=False
-    )
+    text = message.text.strip()
     
-    try:
-        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except:
-        pass
-
-# --- БИЗНЕС РЕЖИМ (Работает от твоего имени) ---
-@bot.business_message_handler(commands=['offer'])
-def cmd_offer_business(message):
-    # В бизнес-режиме сообщение приходит с business_connection_id
-    conn_id = message.business_connection_id
-    
-    # Проверка, что команду написал ты (чтобы мамонт не мог сам себе отправить)
-    if message.from_user.id != ADMIN_ID:
+    # --- ПРОВЕРКА /start ---
+    if text == '/start':
+        bot.send_message(message.chat.id, "Бот работает. Пиши /offer ссылка цена @юзер")
         return
 
-    parts = message.text.split()
-    if len(parts) < 4:
-        bot.send_message(
-            chat_id=message.chat.id, 
-            text="❌ Формат: /offer ссылка цена @юзер", 
-            business_connection_id=conn_id
-        )
-        return
+    # --- ПРОВЕРКА /offer ---
+    if text.startswith('/offer'):
+        parts = text.split()
+        if len(parts) < 4:
+            bot.reply_to(message, "❌ Формат: /offer ссылка цена @юзер")
+            return
 
-    gift_link = parts[1]
-    try:
-        price = int(parts[2])
-    except ValueError:
-        bot.send_message(message.chat.id, "❌ Цена должна быть числом", business_connection_id=conn_id)
-        return
-    target = parts[3]
+        gift_link = parts[1]
+        try:
+            price = int(parts[2])
+        except ValueError:
+            bot.reply_to(message, "❌ Цена должна быть числом")
+            return
+        target = parts[3]
 
-    gift_name = parse_gift_name(gift_link)
-    expires_at = datetime.now() + timedelta(hours=6)
-    offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
-    kb = offer_keyboard()
+        gift_name = parse_gift_name(gift_link)
+        expires_at = datetime.now() + timedelta(hours=6)
+        offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
+        kb = offer_keyboard()
 
-    # Отправляем сообщение ОТ ТВОЕГО ИМЕНИ в бизнес-чат
-    bot.send_message(
-        chat_id=message.chat.id,
-        text=offer_text,
-        parse_mode="HTML",
-        reply_markup=kb,
-        disable_web_page_preview=False,
-        business_connection_id=conn_id # <--- ГЛАВНЫЙ ПАРАМЕТР
-    )
-    
-    # Удаляем команду /offer из бизнес-чата
-    try:
-        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
-    except:
-        pass
+        # Отправляем сообщение (если это бизнес-чат, бот сам подхватит connection_id)
+        try:
+            bot.send_message(
+                chat_id=message.chat.id,
+                text=offer_text,
+                parse_mode="HTML",
+                reply_markup=kb,
+                disable_web_page_preview=False
+            )
+        except Exception as e:
+            bot.reply_to(message, f"Ошибка: {e}")
+            return
+
+        # Удаляем команду /offer из чата
+        try:
+            bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+        except:
+            pass
 
 # --- ИНЛАЙН РЕЖИМ ---
 @bot.inline_handler(lambda query: len(query.query.strip()) > 0)
@@ -209,7 +170,7 @@ def inline_offer(query):
 # --- ОБРАБОТКА КНОПОК ---
 @bot.callback_query_handler(func=lambda call: call.data in ["accept_offer", "decline_offer"])
 def on_callback(call):
-    # Определяем, в каком режиме работает кнопка (обычный или бизнес)
+    # Пытаемся достать business_connection_id (если это бизнес-чат)
     conn_id = getattr(call.message, 'business_connection_id', None)
 
     if call.data == "accept_offer":
@@ -227,7 +188,7 @@ def on_callback(call):
                 parse_mode="HTML",
                 reply_markup=kb,
                 disable_web_page_preview=False,
-                business_connection_id=conn_id # Важно для бизнес-режима
+                business_connection_id=conn_id
             )
         except Exception as e:
             print(f"Ошибка при редактировании: {e}")
