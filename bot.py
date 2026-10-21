@@ -9,7 +9,7 @@ import threading
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8337096654:AAFq_4d39Jo2x0sxC8L2lStxTbL_a3q1P4I"
+BOT_TOKEN = "8337096654:AAFvZBG5W5OWJ1iKNOfMt6VdEvi6UAn3snQ"
 ADMIN_ID = 8927166966
 MY_USERNAME = "@masons_19"
 
@@ -21,8 +21,6 @@ CLOCK_EMOJI = '<tg-emoji emoji-id="5280985696880987202">⏱</tg-emoji>'
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # --- ХРАНИЛИЩЕ ДАННЫХ ОФФЕРОВ ---
-# Сюда мы записываем данные по message_id, чтобы потом знать, что менять
-# Формат: {message_id: {"link": "...", "name": "...", "price": "...", "target": "..."}}
 active_offers = {}
 
 # --- ВЕБ-СЕРВЕР ДЛЯ RENDER ---
@@ -43,7 +41,6 @@ def parse_gift_name(url: str) -> str:
         return unquote(path.split("/")[-1]).replace("+", " ")
     return "Подарок"
 
-# Текст оффера ДО принятия
 def build_offer_text(gift_name, price, gift_url, expires_at):
     remaining = expires_at - datetime.now()
     total_sec = max(0, int(remaining.total_seconds()))
@@ -58,8 +55,6 @@ def build_offer_text(gift_name, price, gift_url, expires_at):
         f"{CLOCK_EMOJI} Предложение действует ещё <b>{hours} ч. {minutes} мин.</b>"
     )
 
-# Текст оффера ПОСЛЕ принятия (КАК НА 2-М СКРИНШОТЕ)
-# Ссылка остается в тексте, чтобы Telegram не убрал карточку сверху
 def build_success_text(gift_name, price, gift_url, target_user):
     clickable_link = f'<a href="{gift_url}">{gift_name}</a>'
     
@@ -107,17 +102,20 @@ def handle_all_messages(message):
         offer_text = build_offer_text(gift_name, price, gift_link, expires_at)
         kb = offer_keyboard()
 
-        # Отправляем сообщение и запоминаем его
         try:
+            # Отправляем сообщение с флагом бизнес-соединения, если оно есть
+            conn_id = getattr(message, 'business_connection_id', None)
+            
             sent_msg = bot.send_message(
                 chat_id=message.chat.id,
                 text=offer_text,
                 parse_mode="HTML",
                 reply_markup=kb,
-                disable_web_page_preview=False
+                disable_web_page_preview=False,
+                business_connection_id=conn_id
             )
             
-            # Сохраняем данные в память (чтобы потом поменять текст)
+            # Сохраняем данные
             active_offers[sent_msg.message_id] = {
                 "link": gift_link,
                 "name": gift_name,
@@ -129,7 +127,7 @@ def handle_all_messages(message):
             print(f"Ошибка отправки: {e}")
             return
 
-        # Удаляем команду .offer
+        # Удаляем команду
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         except:
@@ -144,11 +142,8 @@ def on_callback(call):
     if call.data == "accept_offer":
         bot.answer_callback_query(call.id, "Оффер принят")
         
-        # Достаем данные из памяти
         if msg_id in active_offers:
             data = active_offers[msg_id]
-            
-            # Формируем новый текст с ссылкой внутри
             success_text = build_success_text(
                 data["name"], 
                 data["price"], 
@@ -156,7 +151,6 @@ def on_callback(call):
                 data["target"]
             )
             
-            # Кнопка "Передать"
             kb = types.InlineKeyboardMarkup()
             kb.add(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
 
@@ -167,13 +161,12 @@ def on_callback(call):
                     text=success_text,
                     parse_mode="HTML",
                     reply_markup=kb,
-                    disable_web_page_preview=False, # Оставляем превью (карточку)
+                    disable_web_page_preview=False,
                     business_connection_id=conn_id
                 )
             except Exception as e:
                 print(f"Ошибка редактирования: {e}")
                 
-            # Удаляем из памяти, так как оффер уже обработан
             del active_offers[msg_id]
         else:
             bot.answer_callback_query(call.id, "Оффер устарел", show_alert=True)
