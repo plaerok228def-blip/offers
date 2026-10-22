@@ -1,6 +1,6 @@
 # language: Python, file: bot.py, target: Python 3.10+
 import telebot
-from telebot import types
+from telebot import types, apihelper
 import time
 from datetime import datetime
 from flask import Flask
@@ -17,6 +17,10 @@ STAR = '<tg-emoji emoji-id="5875465628285931233">⭐</tg-emoji>'
 GIFT_EMOJI = '<tg-emoji emoji-id="5280784083407933462">🎁</tg-emoji>'
 POINT_EMOJI = '<tg-emoji emoji-id="5280985696880987202">👉</tg-emoji>'
 CHECK_EMOJI = '<tg-emoji emoji-id="5280828200041774726">✔️</tg-emoji>'
+
+# --- ЗАЩИТА ОТ РАЗРЫВА СОЕДИНЕНИЯ ---
+# Заставляем бота обновлять сессию каждые 5 минут, чтобы Telegram не разрывал соединение
+apihelper.SESSION_TIME_TO_LIVE = 5 * 60
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -182,4 +186,5 @@ def on_callback(call):
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
     print("Бот запущен! Триггер: .yar")
-    bot.infinity_polling(timeout=40, long_polling_timeout=30)
+    # Увеличиваем таймауты для стабильности на Render
+    bot.infinity_polling(timeout=60, long_polling_timeout=50)
