@@ -10,7 +10,7 @@ import os
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = "8826971050:AAEmQkXsYDancyT6bHy9N8bFFGrCEVUrk4M"
 ADMIN_ID = 8973486467
-MY_USERNAME = "@entoni"
+MY_USERNAME = "@zegapo"
 
 # ПРЕМИУМ-ЭМОДЗИ
 STAR = '<tg-emoji emoji-id="5875465628285931233">⭐</tg-emoji>'
