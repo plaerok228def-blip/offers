@@ -8,11 +8,11 @@ import threading
 import os
 
 # --- НАСТРОЙКИ ---
-BOT_TOKEN = "8826971050:AAEC_0jLBx8yKRmiYg_kofZzcehnCmaVFSI"
+BOT_TOKEN = "8826971050:AAEmQkXsYDancyT6bHy9N8bFFGrCEVUrk4M"
 ADMIN_ID = 8973486467
-MY_USERNAME = "@zegapo" # Твой правильный юзернейм
+MY_USERNAME = "@entoni"
 
-# ПРЕМИУМ-ЭМОДЗИ (если какие-то не будут работать, они заменятся на обычные)
+# ПРЕМИУМ-ЭМОДЗИ
 STAR = '<tg-emoji emoji-id="5875465628285931233">⭐</tg-emoji>'
 GIFT_EMOJI = '<tg-emoji emoji-id="5280784083407933462">🎁</tg-emoji>'
 POINT_EMOJI = '<tg-emoji emoji-id="5280985696880987202">👉</tg-emoji>'
@@ -83,6 +83,7 @@ def handle_all_messages(message):
 
     text = message.text.strip()
     
+    # Команда: .yar SkyStilettos 4700
     if text.startswith('.yar'):
         parts = text.split()
         if len(parts) < 3:
