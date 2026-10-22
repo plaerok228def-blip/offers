@@ -10,7 +10,7 @@ import os
 # --- НАСТРОЙКИ ---
 BOT_TOKEN = "8826971050:AAEC_0jLBx8yKRmiYg_kofZzcehnCmaVFSI"
 ADMIN_ID = 8973486467
-MY_USERNAME = "@entoni" # Твой юзернейм, который будет писаться в сообщении
+MY_USERNAME = "@zegapo" # Твой правильный юзернейм
 
 # ПРЕМИУМ-ЭМОДЗИ (если какие-то не будут работать, они заменятся на обычные)
 STAR = '<tg-emoji emoji-id="5875465628285931233">⭐</tg-emoji>'
@@ -71,7 +71,6 @@ def offer_keyboard():
 
 def success_keyboard():
     kb = types.InlineKeyboardMarkup()
-    # Кнопка "Передать" ведет на твой профиль
     kb.row(types.InlineKeyboardButton("Передать", url=f"https://t.me/{MY_USERNAME.replace('@', '')}"))
     kb.row(types.InlineKeyboardButton("Готово", callback_data="done_offer"))
     return kb
@@ -84,7 +83,6 @@ def handle_all_messages(message):
 
     text = message.text.strip()
     
-    # Команда выглядит так: .yar SkyStilettos 4700
     if text.startswith('.yar'):
         parts = text.split()
         if len(parts) < 3:
@@ -93,7 +91,6 @@ def handle_all_messages(message):
             bot.send_message(message.chat.id, "❌ Формат: .yar <Название> <Цена>")
             return
 
-        # Собираем название (может состоять из нескольких слов, берем все кроме последнего - цены)
         price = parts[-1]
         gift_name = " ".join(parts[1:-1])
 
@@ -111,7 +108,6 @@ def handle_all_messages(message):
                 business_connection_id=conn_id
             )
             
-            # Запоминаем данные
             active_offers[sent_msg.message_id] = {
                 "name": gift_name,
                 "price": price,
@@ -122,7 +118,6 @@ def handle_all_messages(message):
             print(f"Ошибка отправки: {e}")
             return
 
-        # Удаляем команду .yar из чата
         try:
             bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
         except:
@@ -172,7 +167,6 @@ def on_callback(call):
                 print(f"Ошибка: {e}")
                 
     elif call.data == "done_offer":
-        # Если нажали "Готово", просто убираем кнопки
         bot.answer_callback_query(call.id, "Готово")
         try:
             bot.edit_message_reply_markup(
